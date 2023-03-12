@@ -1,0 +1,74 @@
+#!/bin/bash
+# Autor: omda
+# Date : 12-03-2023
+# Description: This script will execute through cronjob wich will run backup function
+# inside laravel applicatoin and store the database in the shape of tar file ex `2023-03-12-CGH.tar.gz`
+# Date Modified: 12-03-2023
+
+# Read servers from file exists on the home page of user omda
+servers=`cat /path/to/your/file/servers`
+
+# Backup server name
+bkserver=`cat /path/to/your/file/backup-server`
+
+# her will loop though all servers to run the backup script
+for customer in $servers
+do
+        # this lie will run the sechdule for php laravel inside the app
+        php /var/www/html/$customer/artisan schedule:run 1>> /dev/null 2>&1
+        if [ $? -eq 0 ]
+        then
+                # transfer the files into remote server
+                rsync -av /var/www/html/$customer/storage/app/backups --include="*.zip" omda@$bkserver:/path/to/your/file/dbs
+                if [ $? -eq 0 ]
+                then
+                        message="files transfered successfully";
+                        status="Transifred"
+                        color="#00FF00"
+                else
+                        message="files are not transifred error @omda";
+                        status="Failure"
+                        color="#ff0000"
+                fi
+
+                # send notification to mattermost
+                # Set the webhook URL
+                WEBHOOK_URL="https://your_webhook_url/hooks/83dy1k3617gk5pdheyhswxj1aw"
+
+                # This url for testing puropos
+                # WEBHOOK_URL="https://your_webhook_url/hooks/51onqb5um7rnibm8s5gjpcc85c"
+
+                # Set the message you want to send
+                MESSAGE=$message
+
+                # Send the message using curl
+#                curl -X POST -H "Content-Type: application/json" -d "{\"text\": \"$MESSAGE\"}" $WEBHOOK_URL
+
+                # Set the title and message you want to send
+                TITLE="Auto Transfire After Backup Execute"
+                MESSAGE=$message
+                # Set the card title and text
+                CARD_TITLE="Auto Transfire Backup to Server ** $bkserver ** and execute per day three time [ **10:00** AM,**03:00** PM, **12:00** AM] \n"
+                CARD_TEXT="This script execute after backup occure on customer server **$customer** under storage folder, then will transfire the file has already backuped to server $bkserver, and avaialbe customer are [A,B,C]: \n
+| **ID** | **Server URL** | **Status** |
+|----------|----------|----------|
+| 1   | $customer   | $status   |
+"
+
+                # Send the message with the card
+                curl -X POST -H 'Content-Type: application/json' --data "{
+                  \"text\": \"$MESSAGE\",
+                  \"attachments\": [{
+                    \"title\": \"$CARD_TITLE\",
+                    \"text\": \"$CARD_TEXT\",
+                    \"mrkdwn_in\": [\"text\"],
+                    \"color\": \"$color\"
+                  }]
+                }" $WEBHOOK_URL
+
+        else
+                echo "fiald process" $?
+        fi
+                echo
+                echo "Finished process";
+done
